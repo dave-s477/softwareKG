@@ -1,6 +1,8 @@
 # softwareKG
 This repository accompanies the publication "Investigating software usage in the social sciences with SoftwareKG"
 
+The knowledge graph created based on this code is available at https://data.gesis.org/softwarekg/. 
+
 Currently this repository contains the code in its raw form. 
 There are still some changes necessary to make the code better usable:
 1. create requirements.txt for easy pip set up
