@@ -43,8 +43,7 @@ ngrams_one = Ngrams(n_max=6)
 software_matcher = RegexMatchEach(rgx=r'.*', longest_match_only=False)
 cand_extractor = CandidateExtractor(software, [ngrams_one], [software_matcher])
 
-#doc_preprocessor = TextDocPreprocessor('data/social_science_txt/') 
-doc_preprocessor = TextDocPreprocessor('data/{}/'.format(BASE_NAME)) #('data/brat_files_just_txt/') 
+doc_preprocessor = TextDocPreprocessor('../data/{}/'.format(BASE_NAME))
 corpus_parser = CorpusParser(parser=Spacy())
 if args.db_type == 'sqlite':
     corpus_parser.apply(doc_preprocessor, parallelism=1)
@@ -80,4 +79,4 @@ from util.brat_import import BratAnnotator
 
 brat = BratAnnotator(session, software, encoding='utf-8') 
 train_cands = session.query(software).filter(software.split!=set_mapping['new']).all()
-brat.import_gold_labels(session, "data/{}/".format(args.brat_labels), train_cands)
+brat.import_gold_labels(session, "../data/{}/".format(args.brat_labels), train_cands)
