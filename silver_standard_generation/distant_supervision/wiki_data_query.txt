@@ -1,0 +1,41 @@
+This textfile should contain a valid WikiData Query. 
+
+::
+SELECT ?item ?itemLabel ?devel ?abbreviation ?versions ?website WHERE {
+  BIND(wd:Q28530532 AS ?softwaretypes)
+  {
+    ?type wdt:P31 ?softwaretypes.
+    ?item wdt:P31 ?type.
+  }
+  UNION
+  { ?item wdt:P31 wd:Q7397. }
+  UNION
+  { ?item wdt:P31 wd:Q341. }
+  UNION
+  { ?item wdt:P31 wd:Q183197. }
+  UNION 
+  { 
+    ?softwaresubclass wdt:P279 wd:Q7397.
+    ?item wdt:P31 ?softwaresubclass.
+  }
+  UNION
+  { 
+    ?softwaresubclass wdt:P279 wd:Q7397.
+    ?softwaresubsubclass wdt:P279 ?softwaresubclass.
+    ?item wdt:P31 ?softwaresubsubclass.
+  }
+  OPTIONAL {?item wdt:P856 ?website.}
+  OPTIONAL {?item wdt:P348 ?versions.}
+  OPTIONAL {?item skos:altLabel ?abbreviation . FILTER(lang(?abbreviation)="en")  }
+  OPTIONAL {?item wdt:P178 ?devel.}
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+}
+LIMIT 100000
+::
+
+It is expected that the Query is passed in the format ::Query::, before writing any further comments.
+
+Default language HAS TO BE English ("en"). Other languages are automatically queried and adjusted in the query file.
+
+Should be escaped like:
+https://query.wikidata.org/bigdata/namespace/wdq/sparql?query=SELECT%20%3Fitem%20%3FitemLabel%20%3Fdevel%20%3Fabbreviation%20%3Fversions%20%3Fwebsite%20WHERE%20{%0A%20%20BIND(wd%3AQ28530532%20AS%20%3Fsoftwaretypes)%0A%20%20{%0A%20%20%20%20%3Ftype%20wdt%3AP31%20%3Fsoftwaretypes.%0A%20%20%20%20%3Fitem%20wdt%3AP31%20%3Ftype.%0A%20%20}%0A%20%20UNION%0A%20%20{%20%3Fitem%20wdt%3AP31%20wd%3AQ7397.%20}%0A%20%20UNION%0A%20%20{%20%3Fitem%20wdt%3AP31%20wd%3AQ341.%20}%0A%20%20OPTIONAL%20{%3Fitem%20wdt%3AP856%20%3Fwebsite.}%0A%20%20OPTIONAL%20{%3Fitem%20wdt%3AP348%20%3Fversions.}%0A%20%20OPTIONAL%20{%3Fitem%20skos%3AaltLabel%20%3Fabbreviation%20.%20FILTER(lang(%3Fabbreviation)%3D%22en%22)%20%20}%0A%20%20OPTIONAL%20{%3Fitem%20wdt%3AP178%20%3Fdevel.}%0A%20%20SERVICE%20wikibase%3Alabel%20{%20bd%3AserviceParam%20wikibase%3Alanguage%20%22en%22.%20}%0A}%0ALIMIT%20100000
