@@ -1,1 +1,6 @@
 .ipynb_checkpoints
+data/SoSciSoCi_*
+*.db
+data/R_loading/
+data/Snorkel/
+data/positive_samples_bio.txt

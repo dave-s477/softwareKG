@@ -13,10 +13,6 @@ positive_samples = {}
 # NERsuite tokenization: any alnum sequence is preserved as a single
 # token, while any non-alnum character is separated into a
 # single-character token. TODO: non-ASCII alnum.
-#TOKENIZATION_REGEX = re.compile(r'([0-9a-zA-Z]+|[^0-9a-zA-Z])')
-#TOKENIZATION_REGEX= re.compile(r'(\[[0-9\-,\s\u2013]+\]|[0-9,.]+|[0-9a-zA-Z]+)')
-TOKENIZATION_REGEX = re.compile(r'(\[[0-9\-, \u2013]+\]|[0-9\.]+|[0-9a-zA-Z]+|[^0-9a-zA-Z]+)')
-TOKENIZATION_REGEX = re.compile(r'(\[[0-9\-, \u2013]+\]|[0-9\.]+|[a-zA-Z]+|[^0-9a-zA-Z])')
 TOKENIZATION_REGEX = re.compile(r'((?:10.1371.journal.[a-z]+.[a-z0-9\.]+)|\[[0-9\-,\u2013\?]+\]|[0-9]*\.[0-9]+|[a-zA-Z]+[0-9a-zA-Z]+|[a-zA-Z]+|[^0-9a-zA-Z])')
 
 # tokenization based on whitespaces
@@ -86,13 +82,11 @@ def relabel(document, annotations, use_uncertain):
     prev_label = None
     for ii, lines in enumerate(document):
         for i, l in enumerate(lines):
-#            new_label = False
             if not l:
                 prev_label = None
                 continue
             tag, start, end, token = l
 
-            # TODO: warn for multiple, detailed info for non-initial
             label = None
             for o in range(start, end):
                 if o in offset_label:
@@ -102,7 +96,6 @@ def relabel(document, annotations, use_uncertain):
                     if o + len(token) != end:
                         print("SEcond errror")
                     label = offset_label[o].type
- #                   new_label = True
                     break
 
 
@@ -129,7 +122,7 @@ def create_bio_from_brat(input_folder, output_bio, use_uncertain, files_shuffled
         WARNING: the produced output does also contain the positive samples! 
         So right now this script needs to be run twice with different settings!
         First run with --write-pos flag, then without it.""")
-        file_handle = open('pos_sample_output.txt', 'w')
+        file_handle = open('data/positive_samples_bio.txt', 'w')
         file_handle.write('-DOCSTART- :positive_samples\n')
 
     total_software_annotations = 0
@@ -187,8 +180,6 @@ def create_bio_from_brat(input_folder, output_bio, use_uncertain, files_shuffled
                 if remove_duplicates:
                     if all_src.count(src[line_idx]) > 1:
                         offset += len(line)
-                        #print(line)
-                        #print("removed duplicate")
                         continue
 
                 lines = []
@@ -201,7 +192,6 @@ def create_bio_from_brat(input_folder, output_bio, use_uncertain, files_shuffled
 
             #now we could start the relabelling according to the ann file    
         document, pos_software_counter = relabel(document, get_annotations(join(input_folder,annotation_filename)), use_uncertain)
-        #print("{}.ann {}".format(filename, pos_software_counter))
         total_software_annotations += pos_software_counter
 
         num_empty_lines = 0
@@ -209,10 +199,7 @@ def create_bio_from_brat(input_folder, output_bio, use_uncertain, files_shuffled
             if i == positive_samples_idx:
                 if gather_pos_samples:
                     for token in lines:
-                        # output token \t annotation
                         file_handle.write(token[3] + '\t' + token[0]+'\n')
-                        # end of token
-                    #end of sentence
                     file_handle.write('\n')
                 num_empty_lines += 1
             if files_shuffled:
@@ -231,26 +218,18 @@ def create_bio_from_brat(input_folder, output_bio, use_uncertain, files_shuffled
                 tmp = {int(line) : lines}
                 output_documents[source_document] = tmp
 
-    #print("We collected",len(output_documents), "documents for annotation")
-    #print("All sources len {}, set all source len {}".format(len(all_src), len(set(all_src))))
     
     # write documents to file
     with open(output_bio, 'w') as o:
-        # ensure sorted output 
         documents = sorted(output_documents.keys())
         for document in documents:
             lines = output_documents[document]
-#        for document, lines in output_documents.items():
             o.write('-DOCSTART- :'+ document +'\n')
             line_numbers = sorted(lines.keys())
             for n in line_numbers:
                 for token in lines[n]:
-                    # output token \t annotation
                     o.write(token[3] + '\t' + token[0]+'\n')
-                    # end of token
-                #end of sentence
                 o.write('\n')
-        # end of document
 
 
 if __name__ == "__main__":

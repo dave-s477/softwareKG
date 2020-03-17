@@ -1,11 +1,11 @@
-source("plos_one_retriever.r")
+source("data_loading/plos_one_retriever.R")
 
-papers <- readRDS("paper_ids.RData")
+papers <- readRDS("data/R_loading/paper_ids.RData")
 
 # if full.paper is false, only the methods section will be extracted
 extract.text <- function(fn, outputfolder, full.paper=FALSE){
-  xml_folder <- paste0(outputfolder,"/XML")
-  txt_folder <- paste0(outputfolder,"/TEXT")
+  xml_folder <- paste0(outputfolder,"XML")
+  txt_folder <- paste0(outputfolder,"TEXT")
   
   if (file.exists(fn)){
     texts <- readRDS(fn)
@@ -41,9 +41,11 @@ extract.text <- function(fn, outputfolder, full.paper=FALSE){
 
  chunks <- seq(1, papers$meta$numFound, by=1000)
  for (chunk in chunks){
-   fn <- paste0("paper_",chunk,"_",chunk+999,".RData")
+   fn <- paste0("data/R_loading/paper_",chunk,"_",chunk+999,".RData")
+   dir.create('data/R_loading/XML', showWarnings = FALSE)
+   dir.create('data/R_loading/TEXT', showWarnings = FALSE)
  
-   extract.text(fn = fn, outputfolder = "./", full.paper = FALSE)
+   extract.text(fn = fn, outputfolder = "data/R_loading/", full.paper = FALSE)
  
  }
  

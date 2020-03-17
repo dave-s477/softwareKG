@@ -33,7 +33,6 @@ paragraph.parser <- function(xml.paragraph){
   plain.text <- paste0(xml_text(xml.paragraph), "\n")
   return(plain.text)
 }
-#TODO
 supplementary.parser <- function(xml.supplementary){
   plain.text <- ""
   children.xml <- xml_children(xml.supplementary)
@@ -217,10 +216,8 @@ body.parser <- function(body, full.paper=FALSE){
     }
   }
   plain.text <- paste0(plain.text, "")
-  #cat(plain.text)
   return(plain.text)
 }
-# TODO
 ack.parser <- function(xml.ack){
   plain.text <- "+++Acknowledgement+++\n"
   children.xml <- xml_children(xml.ack)
@@ -323,7 +320,6 @@ back.parser <- function(xml.back){
     }
   }
   plain.text <- paste0(plain.text, "")
-  #cat(plain.text)
   return(plain.text)
 }
 get.doi <- function(xml){
@@ -376,7 +372,7 @@ run <- function(){
       for (doi in papers.current.year$id){
         print(paste0("At Doi ", doi))
         file.name <- strsplit(doi, "/")[[1]][2]
-        xml.text <- full.text.journalwise[[journal.title]][doi] # die Texte 
+        xml.text <- full.text.journalwise[[journal.title]][doi]
         xml <- read_xml(xml.text[[doi]])
         # Save original xml
         xml.name <- paste0(file.name, ".xml")
@@ -391,4 +387,3 @@ run <- function(){
     }
   }
 }
-#read_xml() and get the required tags.. xml_children().. xml.children[[2]] ist body ... xml_text(child)

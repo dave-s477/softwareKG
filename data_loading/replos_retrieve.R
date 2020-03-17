@@ -1,15 +1,17 @@
 require(rplos)
 require(here)
 
+dir.create('data/R_loading', showWarnings = FALSE)
+
 # get amount of available papers
 p <- rplos::plossubject(q='"Social sciences"',fl='id', limit=0)$meta
 
 # get paper ids
-if (file.exists("paper_ids.RData")){
-  papers <- readRDS("paper_ids.RData")
+if (file.exists("data/R_loading/paper_ids.RData")){
+  papers <- readRDS("data/R_loading/paper_ids.RData")
 }else{
-  papers <- rplos::plossubject(q='"Social sciences"',fl='id,subject,article_type', limit=p$numFound)  
-  saveRDS(papers, file="paper_ids.RData")
+  papers <- rplos::plossubject(q='"Social sciences"',fl='id,subject,article_type', limit=p$numFound) 
+  saveRDS(papers, file="data/R_loading/paper_ids.RData")
 }
 
 #sample papers to be annotated
@@ -19,8 +21,8 @@ set.seed(12345)
 article_ids <- sample(x = length(research_articles), size = 500)
 ann_articles <- research_articles[article_ids]
 
-# just get me thoose articles
-ann_fn <- paste0("papers_annotate_",length(article_ids), ".RData")
+# just get me those articles
+ann_fn <- paste0("data/R_loading/papers_annotate_",length(article_ids), ".RData")
 if (!file.exists(ann_fn)){
   time <- system.time(texts_ann <- rplos::plos_fulltext(ann_articles))
   saveRDS(object = texts_ann, file = ann_fn)
@@ -30,7 +32,7 @@ if (!file.exists(ann_fn)){
 paper_chunks <- seq(1, length(papers$data$id), by=1000)
 
 lapply(paper_chunks, function(chunk){
-  fn <- paste0("paper_",chunk,"_",chunk+999,".RData")
+  fn <- paste0("data/R_loading/paper_",chunk,"_",chunk+999,".RData")
   
     if (!file.exists(fn)){
       cat("Working on file", fn,"\n")
@@ -41,9 +43,3 @@ lapply(paper_chunks, function(chunk){
       cat("Finished on file", fn, "in", time[3], "seconds\n")
   }
 })
-
-#r <- lapply(starts[[2]], function(startl){
-#  cat(paste("Starting with", startl, "\n"))
-#  p <- rplos::plossubject(q='"Social sciences"',fl='id', limit=0000, start=startl)
-#  cat(paste("Finished with", p$meta$start))
-#})
