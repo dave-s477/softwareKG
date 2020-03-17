@@ -1,6 +1,8 @@
 # SoftwareKG
 This repository accompanies the publication "Investigating software usage in the social sciences with SoftwareKG"
 
+The knowledge graph created based on this code is available at https://data.gesis.org/softwarekg/. 
+
 The goal is to perform information extraction with respect to software names from scientific articles. 
 This work follows a Silver Standard learning approach and applies a Bi-LSTM-CRF for sequence tagging. 
 The code is structured as follows:
