@@ -50,7 +50,8 @@ And last we perform a simple sentence split with NLTK on the files.
 
 ### Building the Silver Standard
 
-Now we can start to build the silver standard from the new unlabeled data. 
+Now we can start to build the silver standard from the new unlabeled data. The output of this step is also available from https://github.com/dave-s477/SoSciSoCi-SSC.
+
 First up we need to get all data we are going to need in one place.
 We assume here that the annotated SoSciSoCi data is in a separate repository besides the softwareKG repo.
 ```
@@ -64,6 +65,9 @@ The next part of the pipeline is written in form of Jupyter Notebooks:
 ```
 1. The first file that needs to be run is: `01_partition_data.ipynb` which transforms the data so that it can be loaded into Snorkel. 
 2. `02_database_initialization.ipynb` initializes a Snorkel database on which a Snorkel generative model can be build. 
+3. `03_distant_supervision.ipynb` and `04_context.ipynb` give some background on the development of the labeling functions. However, they do not need to be run in full because the labeling functions are also given in the file `learning_functions.py` which is used in the next notebook. However, `03_distant_supervision.ipynb` exports some variables used for distant supervision which are used in later notebooks and scripts. This means this notebook has to be run until the exports are done. 
+4. `05_generate_model.ipynb` trains the Snorkel generative model. 
+5. `06_create_samples.ipynb`
 
 ### Training the Information Extraction Model
 
@@ -82,3 +86,36 @@ The data transformation for this step is then again done using jupyter notebooks
 # jupyter notebook
 ```
 1. `01_data_handling.ipynb` which splits the BIO formatted data into train, devel and test set (in the same way the data was split for Snorkel).
+2. `02_silver_data_handling.ipynb` creates chunks of the SSC that are used for pre-training.
+
+Now it is time to train the model and extract the data. 
+Right now the training process is configured using scripts which call the Python script `./entity_extraction/perform_training.py`. 
+All hyper-parameters are fine-tuned within the scripts. (Currently the training is stopped and resumed from checkpoints which is a little inefficient. When we initially built the memory would slowly fill up through the training process and we would get an allocation error. However, this should be fixed now, so this will soon be addressed.
+
+In total we use three scripts: 1 for SSC pre-training, 1 for GSC training (without using an existing checkpoint) and 1 for GSC training from the SSC checkpoint.
+There is also a separate prediction script (`predict.py`) that loads an existing model and applies it on new reasoning data. 
+It is called form inside the shell script `run_predicition.sh`.
+
+This time we will work from inside the sub-directory.
+```
+# cd entity_extraction
+# python vocabulary_generator.py --train-sets ../data/SoSciSoCi_train_with_pos_ ../../SoSciSoCi-SSC/data/SSC_pos_samples_ ../../SoSciSoCi-SSC/data/SSC_neg_samples_ --devel-set ../data/SoSciSoCi_devel_ --test-set ../data/SoSciSoCi_test_ --out-folder vocabs --dataset-name SoSciSoCi --use-padding  
+```
+To evaluate the model run:
+```
+# bash SSC_pre_training.sh 
+# bash GSC_training_from_scratch.sh
+# bash GSC_training_from_checkpoint.sh
+```
+To only train the final model for prediction run:
+```
+# bash SSC_pre_training.sh 
+# bash train_prediction_model.sh
+```
+And to actually run the prediction:
+```
+# bash run_prediction.sh
+```
+
+3. `03_generate_reasoning_data.ipynb`
+4. `04_ma_query.ipynb`

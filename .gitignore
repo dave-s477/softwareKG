@@ -4,3 +4,7 @@ data/SoSciSoCi_*
 data/R_loading/
 data/Snorkel/
 data/positive_samples_bio.txt
+__pycache__
+*.p
+*_data_*
+*_labels_*
