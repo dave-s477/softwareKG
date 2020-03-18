@@ -32,6 +32,9 @@ install.packages(c("rplos", "fulltext", "xml2", "XML", "dplyr", "ggplot2", "lubr
 
 ### Python
 Here, we would recommend to build a separate [Anaconda](https://www.anaconda.com/) environment for the project. 
+```
+# conda env create -f environment.yml
+```
 
 ## Reproducing the Results
 
