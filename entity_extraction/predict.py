@@ -45,22 +45,21 @@ EPOCHS = 10
 CHAR_LSTM_SIZE = 25
 WORD_LSTM_SIZE = 100
 
-vocabulary_set = pickle.load(open("vocabulary_set_with_pad.p", "rb" ))
-character_set = pickle.load(open("character_set_with_pad.p", "rb" ))
-label_set = pickle.load(open("label_set_no_pad.p", "rb" ))
+vocabulary_set = pickle.load(open("vocabs/SoSciSoCi_word_voc.p", "rb" ))
+character_set = pickle.load(open("vocabs/SoSciSoCi_char_voc.p", "rb" ))
+label_set = pickle.load(open("vocabs/SoSciSoCi_label_voc.p", "rb" ))
 vocab_size = len(vocabulary_set)
 character_size = len(character_set)
 label_size = len(label_set)
 print("Working with {} words, {} characters and {} target labels.".format(vocab_size, character_size, label_size))
 # Add to all datasets because the counts above do not includ padding
 
-text_encoder = CustomTokenTextEncoder.load_from_file('text_encoder_with_pad')
-character_encoder = CustomTokenTextEncoder.load_from_file('character_encoder_with_pad')
-label_encoder = CustomTokenTextEncoder.load_from_file('label_encoder_no_pad')
+text_encoder = CustomTokenTextEncoder.load_from_file('vocabs/text_encoder_with_pad')
+character_encoder = CustomTokenTextEncoder.load_from_file('vocabs/character_encoder_with_pad')
+label_encoder = CustomTokenTextEncoder.load_from_file('vocabs/label_encoder_no_pad')
 vocabulary_padding = text_encoder.encode('<PAD>')[-1]
 character_padding = character_encoder.encode('<PAD>')[-1]
-#label_padding = label_encoder.encode('<PAD>')[-1]
-label_padding = label_encoder.encode('O')[-1]
+label_padding = label_encoder.encode('<PAD>')[-1]
 
 def encode(text_tensor):
     encoded_text = text_encoder.encode(text_tensor.numpy())
@@ -72,16 +71,13 @@ def encode(text_tensor):
         target = []
         for x in some_plain_text:
             char = character_encoder.encode(x)
-            #print(char)
             if char:
                 target.append(char[0])
         if len(target) > 0:
-            encoded_char_list.append(target) #target = character_encoder.encode('<UNK>') 
-        #target = [character_encoder.encode(x)[-1] for x in some_plain_text if len(x) > 0]
-        #target = [character_encoder.encode(x)[0] for x in list(tok.decode('utf-8'))]
+            encoded_char_list.append(target) 
         if len(target) > max_length:
             max_length = len(target)
-    sentence_length = len(encoded_text)#np.full(1, len(plain_text), dtype=np.int32)
+    sentence_length = len(encoded_text)
     tensor = np.full((len(encoded_text), max_length), character_padding, dtype=np.int32)
     for i, ex in enumerate(encoded_char_list):
         tensor[i,0:len(ex)] = ex
@@ -95,12 +91,10 @@ def combine_features(text_tensor, plain_tensor, length_tensor):
 
 def create_prediction_data(data_file_list, batched=True, batch_size=64):
     lines_dataset = tf.data.TextLineDataset(data_file_list)
-    #plain_lines_dataset = tf.data.TextLineDataset(data_file_list)
     labelled_dataset = tf.data.Dataset.zip((lines_dataset))
     labelled_dataset = labelled_dataset.map(encode_map_fn)
     labelled_dataset = labelled_dataset.map(combine_features)
     if batched:
-        #labelled_dataset = labelled_dataset.padded_batch(BATCH_SIZE, padded_shapes=([None], [None,None], [None],[None]))
         labelled_dataset = labelled_dataset.padded_batch(batch_size, padded_shapes=(([None], [None,None], [])),padding_values=((tf.constant(vocabulary_padding, dtype=tf.int32), tf.constant(character_padding, dtype=tf.int32), tf.constant(0, dtype=tf.int32))))#(([-1],[-1,-1]),[-1]))#, padding_values=(0, 0))
     return labelled_dataset
 
@@ -123,9 +117,6 @@ def get_software_sent(pred_and_text):
                 sent_software_list.append(current_software)
                 current_software = ''
         elif word_pred == 'B-software':
-            #print(word_text)
-            #print(text_encoder.decode(sent_text).split())
-            #print(label_encoder.decode(sent_pred).split())
             if current_software: 
                 sent_software_list.append(current_software)
             current_software = word_text
@@ -133,7 +124,6 @@ def get_software_sent(pred_and_text):
             if current_software:
                 current_software += ' ' + word_text
             else:
-                #print("A case occurred which the model should not learn..")
                 current_software = word_text
     return sent_software_list
 
@@ -148,10 +138,6 @@ def get_software_names(pred_seq, text_tensor, sent_length):
         sent_software_list = []
         current_software = ''
         for idx, (word_pred, word_text) in enumerate(zip(label_encoder.decode(sent_pred).split(), text_encoder.decode(sent_text).split())):
-            #if idx >= cur_len:
-            #    print("Now at end: {}".format(word_text))
-            #else:
-            #    print("Still in sent: {}".format(word_text))
             if word_text == '<PAD>':
                 if current_software:
                     sent_software_list.append(current_software)
@@ -161,9 +147,6 @@ def get_software_names(pred_seq, text_tensor, sent_length):
                     sent_software_list.append(current_software)
                     current_software = ''
             elif word_pred == 'B-software':
-                #print(word_text)
-                #print(text_encoder.decode(sent_text).split())
-                #print(label_encoder.decode(sent_pred).split())
                 if current_software: 
                     sent_software_list.append(current_software)
                 current_software = word_text
@@ -171,9 +154,7 @@ def get_software_names(pred_seq, text_tensor, sent_length):
                 if current_software:
                     current_software += ' ' + word_text
                 else:
-                    #print("A case occurred which the model should not learn..")
                     current_software = word_text
-        #print(sent_software_list)
         batch_software_list.extend(sent_software_list)
     return batch_software_list
 
@@ -187,17 +168,13 @@ def predict_article(article_name, model):
         article_set = create_prediction_data(join('../data/reasoning_data', article_name), batched=True, batch_size=max(BATCH_SIZE, line_number))
         software_names = []
         for b in article_set:
-            #print(b)
-            _,_,sent_length,pred_seq = model(b)
-            #%time get_software_names(pred_seq, b[0])
+            pred_seq = model(b, train=False)
             if line_number < 70:
                 extracted_software = get_software_names(pred_seq, b[0], sent_length)
             else:
                 extracted_software = get_software_names_multi(pred_seq, b[0])
-            #%time get_software_names_multi(pred_seq, b[0])
             software_names.extend(extracted_software)
         article_info = get_doc_dict(article_name_doi, software_names)
-        #print(article_info)
     return article_info
 
 class bi_LSTM_seq_tagger(tf.keras.models.Model):
@@ -220,7 +197,7 @@ class bi_LSTM_seq_tagger(tf.keras.models.Model):
         self.logits = TimeDistributed(Dense(label_size, activation="relu"))
         self.crf_params = tf.Variable(initializer([label_size, label_size]), "transitions")
  
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, targ_seq=None):
         input_words = inputs[0]
         word_emb = self.word_embedding(input_words)
         if training:
@@ -241,9 +218,17 @@ class bi_LSTM_seq_tagger(tf.keras.models.Model):
         if training:
             lstm_features = self.feature_dropout(lstm_features)
         classification = self.logits(lstm_features)
-        tag_seq, score = crf.crf_decode(classification, self.crf_params, sequence_length)
-        
-        return classification, self.crf_params, sequence_length, tag_seq
+
+        if training:
+            log_likelihood, _ = crf_log_likelihood(classification, targ_seq, sequence_length, self.crf_params)
+            return log_likelihood
+        else:
+            tag_seq, scores = crf_decode(logits, self.crf_params, sequence_length)
+            if targ_seq is not None:
+                log_likelihood, _ = crf_log_likelihood(classification, targ_seq, sequence_length, self.crf_params)
+                return tag_seq, log_likelihood
+            else:  
+                return tag_seq       
     
     def get_config(self):
         return {

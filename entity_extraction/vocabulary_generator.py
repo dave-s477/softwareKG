@@ -6,6 +6,8 @@ from os.path import join, exists
 
 import tensorflow as tf 
 
+from util.custom_token_encoder import CustomTokenTextEncoder
+
 def main(train_locs, devel_loc, test_loc, padding, out_f, name):
     data = tf.data.TextLineDataset([x + 'data.txt' for x in train_locs] + [devel_loc + 'data.txt', test_loc +'data.txt'])
     labels = tf.data.TextLineDataset([x + 'labels.txt' for x in train_locs] + [devel_loc + 'labels.txt', test_loc +'labels.txt'])
@@ -40,6 +42,14 @@ def main(train_locs, devel_loc, test_loc, padding, out_f, name):
     pickle.dump(vocabulary_list, open("{}/{}_word_voc.p".format(out_f, name), "wb" ))
     pickle.dump(character_list, open("{}/{}_char_voc.p".format(out_f, name), "wb" ))
     pickle.dump(label_list, open("{}/{}_label_voc.p".format(out_f, name), "wb" ))
+
+    text_encoder = CustomTokenTextEncoder(vocabulary_set)
+    character_encoder = CustomTokenTextEncoder(character_set)
+    label_encoder = CustomTokenTextEncoder(label_set)
+
+    text_encoder.save_to_file('{}/text_encoder'.format(out_f))
+    character_encoder.save_to_file('{}/character_encoder'.format(out_f))
+    label_encoder.save_to_file('{}/label_encoder'.format(out_f))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

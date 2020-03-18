@@ -12,6 +12,11 @@ The code is structured as follows:
 4. `./entity_linking` contains the files that match common software names and match them to DBpedia entries. 
 5. `./knowledge_graph_exploitation` gives same sample functions of how SoftwareKG can be accessed to reproduce our analyses.
 
+Most of the code works without problems. 
+Between the individual steps there might still be some naming inconsistencies/path inconsistencies or data formatting issues which need to be addressed. 
+It is planned that the code is updated and refactored in future versions of SoftwareKG.
+It is also planned that the project will be updated to work with Snorkel 0.9.0 instead of 0.7.0. 
+
 The [SoSciSoCi](https://github.com/f-krueger/SoSciSoCi) data used in this repository is lying in the partner repository . 
 In the following it will be explained how (and in what order to run this code).
 
@@ -97,9 +102,15 @@ There is also a separate prediction script (`predict.py`) that loads an existing
 It is called form inside the shell script `run_predicition.sh`.
 
 This time we will work from inside the sub-directory.
+First we build the vocabulary of words we are going to use and create folders for logging and saving.
 ```
 # cd entity_extraction
 # python vocabulary_generator.py --train-sets ../data/SoSciSoCi_train_with_pos_ ../../SoSciSoCi-SSC/data/SSC_pos_samples_ ../../SoSciSoCi-SSC/data/SSC_neg_samples_ --devel-set ../data/SoSciSoCi_devel_ --test-set ../data/SoSciSoCi_test_ --out-folder vocabs --dataset-name SoSciSoCi --use-padding  
+# mkdir checkpoints logs
+```
+A pretrained word2vec model is used for the extaction. It needs to be downloaded from http://bio.nlplab.org/ first. The size is almost 5GB so it wil probably take some time. 
+```
+# mkdir embeddings && cd embeddings && wget http://evexdb.org/pmresources/vec-space-models/wikipedia-pubmed-and-PMC-w2v.bin 
 ```
 To evaluate the model run:
 ```

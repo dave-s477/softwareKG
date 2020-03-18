@@ -43,32 +43,34 @@ CHAR_LSTM_SIZE = 25
 WORD_LSTM_SIZE = 100
 
 # Fixing the datapaths that are available and loading the static vocabularies
-silver_standard_positive = 'pos_silver_samples_cor'
-silver_standard_negative = 'neg_silver_samples_cor'
-merged_silver_standard_1 = 'merged_silver_standard_1'
-merged_silver_standard_2 = 'merged_silver_standard_2'
-gold_standard_train = 'sosci_train'
-gold_standard_devel = 'sosci_devel'
-gold_standard_test = 'sosci_test'
+gold_standard_train = 'SoSciSoCi_train_with_pos'
+gold_standard_devel = 'SoSciSoCi_devel'
+gold_standard_test = 'SoSciSoCi_test'
 
-vocabulary_set = pickle.load(open("vocabulary_set_with_pad.p", "rb" ))
-character_set = pickle.load(open("character_set_with_pad.p", "rb" ))
-#label_set = pickle.load(open("label_set_with_pad.p", "rb" ))
-label_set = pickle.load(open("label_set_no_pad.p", "rb" ))
+vocabulary_set = pickle.load(open("vocabs/SoSciSoCi_word_voc.p", "rb" ))
+character_set = pickle.load(open("vocabs/SoSciSoCi_char_voc.p", "rb" ))
+label_set = pickle.load(open("vocabs/SoSciSoCi_label_voc.p", "rb" ))
 vocab_size = len(vocabulary_set)
 character_size = len(character_set)
 label_size = len(label_set)
 print("Working with {} words, {} characters and {} target labels.".format(vocab_size, character_size, label_size))
 
 # Setting up encoders to map words, characters and labels to fixed tf.int32 
-text_encoder = CustomTokenTextEncoder.load_from_file('text_encoder_with_pad')
-character_encoder = CustomTokenTextEncoder.load_from_file('character_encoder_with_pad')
-#label_encoder = CustomTokenTextEncoder.load_from_file('label_encoder_with_pad')
-label_encoder = CustomTokenTextEncoder.load_from_file('label_encoder_no_pad')
+text_encoder = CustomTokenTextEncoder.load_from_file('vocabs/text_encoder')
+character_encoder = CustomTokenTextEncoder.load_from_file('vocabs/character_encoder')
+label_encoder = CustomTokenTextEncoder.load_from_file('vocabs/label_encoder')
 vocabulary_padding = text_encoder.encode('<PAD>')[-1]
 character_padding = character_encoder.encode('<PAD>')[-1]
-#label_padding = label_encoder.encode('<PAD>')[-1]
-label_padding = label_encoder.encode('O')[-1]
+label_padding = label_encoder.encode('<PAD>')[-1]
+
+train_step_signature = [
+    (
+        tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+        tf.TensorSpec(shape=(None, None, None), dtype=tf.int32),
+        tf.TensorSpec(shape=(None), dtype=tf.int32)
+    ),
+    tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+]
 
 # Data loading and transformation functions
 def encode(text_tensor, label_tensor):
@@ -82,13 +84,10 @@ def encode(text_tensor, label_tensor):
         target = []
         for x in some_plain_text:
             char = character_encoder.encode(x)
-            #print(char)
             if char:
                 target.append(char[0])
         if len(target) > 0:
-            encoded_char_list.append(target) #target = character_encoder.encode('<UNK>') 
-        #target = [character_encoder.encode(x)[-1] for x in some_plain_text if len(x) > 0]
-        #target = [character_encoder.encode(x)[0] for x in list(tok.decode('utf-8'))]
+            encoded_char_list.append(target) 
         if len(target) > max_length:
             max_length = len(target)
     sentence_length = len(encoded_text)
@@ -155,7 +154,7 @@ class bi_LSTM_seq_tagger(tf.keras.models.Model):
         self.logits = TimeDistributed(Dense(label_size, activation="relu"))
         self.crf_params = tf.Variable(initializer([label_size, label_size]), "transitions")
  
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=False, targ_seq=None):
         input_words = inputs[0]
         word_emb = self.word_embedding(input_words)
         if training:
@@ -172,17 +171,21 @@ class bi_LSTM_seq_tagger(tf.keras.models.Model):
         sequence_length = inputs[2]
         sequence_length = tf.squeeze(sequence_length)
         features = concatenate([word_emb, char_features])
-        #print("FEATURES")
-        #print(features)
         lstm_features = self.feature_lstm(features)
-        #print("LSTM Output")
-        #print(lstm_features)
         if training:
             lstm_features = self.feature_dropout(lstm_features)
         classification = self.logits(lstm_features)
-        tag_seq, score = crf.crf_decode(classification, self.crf_params, sequence_length)
-        
-        return classification, self.crf_params, sequence_length, tag_seq
+
+        if training:
+            log_likelihood, _ = crf.crf_log_likelihood(classification, targ_seq, sequence_length, self.crf_params)
+            return log_likelihood
+        else:
+            tag_seq, scores = crf.crf_decode(classification, self.crf_params, sequence_length)
+            if targ_seq is not None:
+                log_likelihood, _ = crf.crf_log_likelihood(logits, targ_seq, sequence_length, self.crf_params)
+                return tag_seq, log_likelihood
+            else:  
+                return tag_seq        
     
     def get_config(self):
         return {
@@ -217,101 +220,42 @@ def train_test_func(model, train_set, test_set, train_epochs, learning_rate, lea
     val_b_soft_precision_metric = Precision()
     val_i_soft_recall_metric = Recall()
     val_i_soft_precision_metric = Precision()
-    #val_O_recall_metric = Recall()
-    #val_O_precision_metric = Precision()
     val_acc_prev = 0
     val_b_soft_precision_prev = 0
     val_b_soft_recall_prev = 0
     val_i_soft_precision_prev = 0
     val_i_soft_recall_prev = 0
-    #val_O_precision_prev = 0
-    #val_O_recall_prev = 0    
-    
+
+    optimizer = RMSprop(learning_rate=learning_rate)
+
+    @tf.function(input_signature=train_step_signature)
+    def train_step(inp, targ):
+        loss = 0
+        with tf.GradientTape() as tape:
+            log_likelihood = model(inp, training=True, targ_seq=targ)
+            crf_loss = tf.reduce_mean(-log_likelihood)# / tf.cast(inp[2], dtype=log_likelihood.dtype))
+
+        variables = model.trainable_variables 
+        gradients = tape.gradient(crf_loss, variables)
+        optimizer.apply_gradients(zip(gradients, variables))
+        return crf_loss
+
     with writer.as_default():
-        for epoch in range(train_epochs):
+        for epoch in range(train_epochs):   
             learn_rate = learning_rate - learning_decay * epoch 
             print("Current learn rate at {}".format(learn_rate))
-            optimizer = RMSprop(learning_rate=learn_rate)
             tf.summary.scalar("Learning Rate", learn_rate, step=global_epochs)
             epoch_start_time = time.time()
-            print('Start of epoch %d' % (global_epochs,))
+            print('Start of epoch %d' % (global_epochs,)) 
+            optimizer.learning_rate = learn_rate
 
             if train_test == 'train':
                 for step, (x_batch_train, y_batch_train) in enumerate(train_set):
-                    #if step % 100 == 0:
-                    #    print(model.crf_params)
-                    with tf.GradientTape() as tape: # watch_accessed_variables=False
-                        logits, crf_params, sequence_length, tag_seq = model(x_batch_train, training=True)
-                        log_likelihood, _ = crf.crf_log_likelihood(logits, y_batch_train, sequence_length, crf_params)
-                        #print(log_likelihood)
-                        if sample_weighting:
-                            # Up-weigh positive samples while down-weighing negative ones.
-                            #print(y_batch_train)
-                            #print(tf.math.equal(y_batch_train, b_software_tensor))
-                            #print(tf.reduce_any(tf.math.equal(y_batch_train, b_software_tensor), axis=1))
-                            #print(tf.where(tf.reduce_any(tf.math.equal(y_batch_train, b_software_tensor), axis=1), 1+float(sample_weighting), 1-float(sample_weighting)))
-                            sample_weights = tf.where(tf.reduce_any(tf.math.equal(y_batch_train, b_software_tensor), axis=1), 1+float(sample_weighting), 1-float(sample_weighting))
-                            #print(sample_weights)
-                            #print(log_likelihood * sample_weights)
-                            #print(-log_likelihood * sample_weights)
-                            loss = tf.reduce_mean(-log_likelihood * sample_weights)
-                        else:
-                            loss = tf.reduce_mean(-log_likelihood)
-                    grads = tape.gradient(loss, model.trainable_weights)
-                    optimizer.apply_gradients(zip(grads, model.trainable_weights))
+                    loss = train_step(x_batch_train, y_batch_train)
 
-                    acc_mask = tf.sequence_mask(sequence_length)
-                    train_acc_metric(y_batch_train, tag_seq, sample_weight=acc_mask) 
-                    if train_logging:
-                        y_b_software = tf.where(y_batch_train == b_software_label, 1, 0)
-                        pred_b_software = tf.where(tag_seq == b_software_label, 1, 0)
-                        train_b_soft_precision_metric(y_b_software, pred_b_software, sample_weight=acc_mask)
-                        train_b_soft_recall_metric(y_b_software, pred_b_software, sample_weight=acc_mask)
-                        y_i_software = tf.where(y_batch_train == i_software_label, 1, 0)
-                        pred_i_software = tf.where(tag_seq == i_software_label, 1, 0)
-                        train_i_soft_precision_metric(y_i_software, pred_i_software, sample_weight=acc_mask)
-                        train_i_soft_recall_metric(y_i_software, pred_i_software, sample_weight=acc_mask)
-                    if step % 20 == 0:
+                    if step % 10 == 0:
                         print('Training loss (for one batch) at step %s: %s' % (step, float(loss)))
                         print('Seen so far: %s samples' % ((step + 1) * BATCH_SIZE))     
-
-                    #print(model.feature_lstm.weights)
-                    #print("variables 0")
-                    #print(model.feature_lstm.variables[0])
-                    #print("variables 1")
-                    #print(model.feature_lstm.variables[1])
-
-                    #print(model.feature_lstm.variables tf.split(z, 4, axis=1)
-                    #tf.summary.histogram('LSTM cell', model.feature_lstm)           
-
-                train_acc = train_acc_metric.result()
-                print('Training acc over epoch: %s' % (float(train_acc),))
-                train_acc_metric.reset_states()
-                #tf.summary.scalar("Train Accuracy", train_acc, step=global_epochs)
-                tf.summary.scalar("Train Accuracy", train_acc, step=global_epochs)
-                if train_logging:
-                    train_b_soft_precision = train_b_soft_precision_metric.result()
-                    train_b_soft_recall = train_b_soft_recall_metric.result()
-                    train_i_soft_precision = train_i_soft_precision_metric.result()
-                    train_i_soft_recall = train_i_soft_recall_metric.result()
-                    print('train B-software precision over epoch: %s' % (float(train_b_soft_precision),))
-                    print('train B-software recall over epoch: %s' % (float(train_b_soft_recall),))
-                    print('train I-software precision over epoch: %s' % (float(train_i_soft_precision),))
-                    print('train I-software recall over epoch: %s' % (float(train_i_soft_recall),))
-                    train_b_soft_precision_metric.reset_states()
-                    train_b_soft_recall_metric.reset_states()
-                    train_i_soft_precision_metric.reset_states()
-                    train_i_soft_recall_metric.reset_states()
-                    #tf.summary.scalar("train B-software Precision", train_b_soft_precision, step=global_epochs)
-                    #tf.summary.scalar("train B-software Recall", train_b_soft_recall, step=global_epochs)
-                    #tf.summary.scalar("train I-software Precision", train_i_soft_precision, step=global_epochs)
-                    #tf.summary.scalar("train I-software Recall", train_i_soft_recall, step=global_epochs)
-                    tf.summary.scalar("train B-software Precision", train_b_soft_precision, step=global_epochs)
-                    tf.summary.scalar("train B-software Recall", train_b_soft_recall, step=global_epochs)
-                    tf.summary.scalar("train B-software Fscore", (2 * train_b_soft_precision * train_b_soft_recall) / (train_b_soft_precision + train_b_soft_recall), step=global_epochs)
-                    tf.summary.scalar("train I-software Precision", train_i_soft_precision, step=global_epochs)
-                    tf.summary.scalar("train I-software Recall", train_i_soft_recall, step=global_epochs)
-                    tf.summary.scalar("train I-software Fscore", (2 * train_i_soft_precision * train_i_soft_recall) / (train_i_soft_precision + train_i_soft_recall), step=global_epochs)
                 epoch_end_time = time.time()
             
                 # Save the model 
@@ -338,10 +282,10 @@ def train_test_func(model, train_set, test_set, train_epochs, learning_rate, lea
             if not custom_eval:
                 # Run a validation loop at the end of each epoch.
                 for x_batch_val, y_batch_val in test_set:
-                    _, _, val_sequence_length, val_tag_seq = model(x_batch_val, training=False)
+                    val_tag_seq = model(x_batch_val, training=False)
                     #_, _, val_sequence_length, val_tag_seq = model.predict_on_batch(x_batch_val)
                     
-                    val_acc_mask = tf.sequence_mask(val_sequence_length)
+                    val_acc_mask = tf.sequence_mask(x_batch_val[2])
                     val_acc_metric(y_batch_val, val_tag_seq, sample_weight=val_acc_mask)
 
                     #y_b_software = tf.map_fn(lambda x: tf.map_fn(lambda a: 1 if a == b_software_label else 0, x), y_batch_val)
@@ -441,28 +385,24 @@ def train_test_func(model, train_set, test_set, train_epochs, learning_rate, lea
 # Training functions concerned with running all initializations and calling the training loop 
 def run_training(args):
     # Creating the datasets
-    if args.train_set == 'silver_train':
-        train_set = create_dataset('../data/'+silver_standard_positive+'_data.txt', '../data/'+silver_standard_positive+'_labels.txt', shuffle=True, down_sample=False, take=args.take, skip=args.skip)
-    elif args.train_set.startswith('silver_merged_'):
+    if args.train_set.startswith('silver_merged_'):
         set_number = args.train_set.split('_')[2]
         fold = args.train_set.split('_')[4]
         train_set = create_dataset('../data/merged_silver_standard_data_ep{}_{}.txt'.format(set_number, fold), '../data/merged_silver_standard_labels_ep{}_{}.txt'.format(set_number, fold), shuffle=True, down_sample=False, take=args.take, skip=args.skip)
-#    elif args.train_set == 'silver_merged_train_2':
-#        train_set = create_dataset('../data/'+merged_silver_standard_2+'_data.txt', '../data/'+merged_silver_standard_2+'_labels.txt', shuffle=True, down_sample=False)
     elif args.train_set == 'gold_train_with_pos':
-        train_set = create_dataset('../data/sosci_train_with_pos_data.txt', '../data/sosci_train_with_pos_labels.txt', shuffle=True, down_sample=False, take=args.take, skip=args.skip)
+        train_set = create_dataset('../data/SoSciSoCi_train_with_pos_data.txt', '../data/SoSciSoCi_train_with_pos_labels.txt', shuffle=True, down_sample=False, take=args.take, skip=args.skip)
     elif args.train_set == 'gold_train_no_pos':
-        train_set = create_dataset('../data/sosci_train_no_pos_data.txt', '../data/sosci_train_no_pos_labels.txt', shuffle=True, down_sample=False, take=args.take, skip=args.skip)
+        train_set = create_dataset('../data/SoSciSoCi_train_no_pos_data.txt', '../data/SoSciSoCi_train_no_pos_labels.txt', shuffle=True, down_sample=False, take=args.take, skip=args.skip)
     elif args.train_set == 'gold_devel':
         train_set = create_dataset(['../data/'+gold_standard_train+'_data.txt', '../data/'+gold_standard_devel+'_data.txt'], ['../data/'+gold_standard_train+'_labels.txt', '../data/'+gold_standard_devel+'_labels.txt'], shuffle=True, down_sample=False, take=args.take, skip=args.skip)
+    elif args.train_set == 'gold_all':
+        train_set = create_dataset(['../data/'+gold_standard_train+'_data.txt', '../data/'+gold_standard_devel+'_data.txt', '../data/'+gold_standard_test+'_data.txt'], ['../data/'+gold_standard_train+'_labels.txt', '../data/'+gold_standard_devel+'_labels.txt', '../data/'+gold_standard_test+'_labels.txt'], shuffle=True, down_sample=False, take=args.take, skip=args.skip)
     elif args.train_set.startswith('silver_train_'):
         extension = args.train_set.split('_')[-1]
-        train_set = create_dataset('../data/merged_silver_standard_data_ep{}.txt'.format(extension), '../data/merged_silver_standard_labels_ep{}.txt'.format(extension), shuffle=True, down_sample=False, take=args.take, skip=args.skip)
-    elif args.train_set == 'duck':
-        train_set = create_dataset('../data/'+args.train_set+'_data.txt', '../data/'+args.train_set+'_labels.txt', shuffle=True, down_sample=False, take=args.take, skip=args.skip)
+        train_set = create_dataset('../data/merged_SSC_data_ep{}.txt'.format(extension), '../data/merged_SSC_labels_ep{}.txt'.format(extension), shuffle=True, down_sample=False, take=args.take, skip=args.skip)
     elif args.train_set.startswith('silver_opt_'):
         extension = args.train_set.split('_')[-1]
-        train_set = create_dataset('../data/merged_silver_opt_train_data_ep{}.txt'.format(extension), '../data/merged_silver_opt_train_labels_ep{}.txt'.format(extension), shuffle=True, down_sample=False, take=args.take, skip=args.skip)
+        train_set = create_dataset('../data/merged_SSC_opt_train_data_ep{}.txt'.format(extension), '../data/merged_SSC_opt_train_labels_ep{}.txt'.format(extension), shuffle=True, down_sample=False, take=args.take, skip=args.skip)
     else:
         raise(RuntimeError("Unknown data selection was passed as train set."))
 
@@ -527,10 +467,10 @@ def custom_evaluation(model, test_set):
     y_true = []
     y_pred = []
     for x, y in test_set:
-        _, _, sequence_length, tag_seq = model(x, training=False)
+        tag_seq = model(x, training=False)
         y_true_sents = tf.split(y, y.shape[0])
         y_pred_sents = tf.split(tag_seq, y.shape[0])
-        sentence_lengths = tf.split(sequence_length, y.shape[0])
+        sentence_lengths = tf.split(x[2], y.shape[0])
         for sent_true, sent_pred, length in zip(y_true_sents, y_pred_sents, sentence_lengths):
             l = tf.squeeze(length)
             y_true.extend(label_encoder.decode(tf.squeeze(sent_true)[0:l].numpy()).split())
